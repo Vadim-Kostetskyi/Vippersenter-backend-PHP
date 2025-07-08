@@ -1,0 +1,14 @@
+Array
+(
+    [quantity] => 9
+    [value_main] => 1
+    [value_secondary] => 22
+    [value_tertiary] => 
+)
+Array
+(
+    [quantity] => 2
+    [value_main] => 1
+    [value_secondary] => 11
+    [value_tertiary] => 
+)
