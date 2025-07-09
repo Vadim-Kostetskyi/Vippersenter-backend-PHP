@@ -299,22 +299,46 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
             if (preg_match("#^" . preg_quote($baseProductsPath, '#') . "/([^/]+)$#", $uri, $matches)) {
                 $slug = $matches[1];
                 $data = json_decode(file_get_contents("php://input"), true);
-        
-                if (!isset($data['quantity'], $data['value_main'])) {
-                    http_response_code(400);
-                    echo json_encode(['error' => 'Missing quantity or value_main']);
-                    return;
-                }
-        
-                $quantity = intval($data['quantity']);
-                $value_main = $data['value_main'];
+            
+                $quantity = intval($data['quantity'] ?? -1);
+                $value_main = $data['value_main'] ?? null;
                 $value_secondary = $data['value_secondary'] ?? null;
                 $value_tertiary = $data['value_tertiary'] ?? null;
-        
+            
+                if ($quantity < 0) {
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Missing or invalid quantity']);
+                    return;
+                }
+            
+                // Якщо не передано value_main — оновлюємо загальну кількість товару
+                if ($value_main === null) {
+                    $stmt = $mysql->prepare("UPDATE products SET quantity = ? WHERE slug = ?");
+                    if (!$stmt) {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'DB prepare failed', 'detail' => $mysql->error]);
+                        return;
+                    }
+            
+                    $stmt->bind_param("is", $quantity, $slug);
+                    $success = $stmt->execute();
+                    $stmt->close();
+            
+                    if ($success) {
+                        echo json_encode(['success' => true]);
+                    } else {
+                        http_response_code(500);
+                        echo json_encode(['error' => 'Update failed']);
+                    }
+            
+                    return;
+                }
+            
+                // Якщо value_main є — оновлюємо конкретну комбінацію
                 $sql = "UPDATE product_attributes SET quantity = ? WHERE slug = ? AND value_main = ?";
                 $params = [$quantity, $slug, $value_main];
                 $types = "iss";
-        
+            
                 if (empty($value_secondary)) {
                     $sql .= " AND (value_secondary IS NULL OR value_secondary = '')";
                 } else {
@@ -322,7 +346,7 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
                     $params[] = $value_secondary;
                     $types .= "s";
                 }
-                
+            
                 if (empty($value_tertiary)) {
                     $sql .= " AND (value_tertiary IS NULL OR value_tertiary = '')";
                 } else {
@@ -330,37 +354,34 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
                     $params[] = $value_tertiary;
                     $types .= "s";
                 }
-                
-        
+            
                 $stmt = $mysql->prepare($sql);
                 if (!$stmt) {
                     http_response_code(500);
                     echo json_encode(['error' => 'DB prepare failed', 'detail' => $mysql->error]);
                     return;
                 }
-        
-                // Прив’язка параметрів
+            
                 $bind_names[] = $types;
                 foreach ($params as $key => $value) {
                     $bind_names[] = &$params[$key];
                 }
                 call_user_func_array([$stmt, 'bind_param'], $bind_names);
-        
+            
                 $success = $stmt->execute();
                 $stmt->close();
-        
+            
                 if ($success) {
                     echo json_encode(['success' => true]);
                 } else {
                     http_response_code(500);
                     echo json_encode(['error' => 'Update failed']);
                 }
-        
+            
                 return;
             }
             break;
-        
-          
+    
 
           case 'DELETE':
             if (preg_match("#^" . preg_quote($baseProductsPath, '#') . "/([^/]+)$#", $uri, $matches)) {
