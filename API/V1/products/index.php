@@ -5,6 +5,8 @@ ob_start();
 
 loadEnv();
 
+file_put_contents('debug.log', print_r($_SERVER['REQUEST_URI'], true) . PHP_EOL, FILE_APPEND);
+
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");

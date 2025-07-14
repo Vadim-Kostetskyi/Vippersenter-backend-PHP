@@ -41,79 +41,7 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
           echo json_encode($products);
           exit;
           
-        } elseif (strpos($uri, rtrim($baseProductsPath, '/') . '/category/') === 0) {
-          $pathAfterCategory = substr($uri, strlen(rtrim($baseProductsPath, '/') . '/category/'));
-          $parts = explode('/', $pathAfterCategory);
-          $categoryName = urldecode(array_shift($parts));
-          $filters = [];
-          for ($i = 0; $i < count($parts); $i += 2) {
-              if (isset($parts[$i+1])) {
-                  $filters[urldecode($parts[$i])] = urldecode($parts[$i+1]);
-              }
-          }
-          
-          $sql = "SELECT * FROM products WHERE category = ?";
-          $types = "s";
-          $params = [$categoryName];
-          $joins = "";
-          $filterIndex = 0;
-          foreach ($filters as $attr => $val) {
-              $filterIndex++;
-              $joins .= " AND EXISTS (
-                  SELECT 1 FROM product_attributes pa{$filterIndex} 
-                  WHERE pa{$filterIndex}.slug = products.slug 
-                    AND pa{$filterIndex}.attribute = ? 
-                    AND pa{$filterIndex}.value_main = ?
-              )";
-              $types .= "ss";
-              $params[] = $attr;
-              $params[] = $val;
-          }
-          $sql .= $joins;
-
-          $stmt = $mysql->prepare($sql);
-          if (!$stmt) {
-              http_response_code(500);
-              echo json_encode(['error' => 'DB prepare failed', 'detail' => $mysql->error]);
-              exit;
-          }
-
-          $bind_names[] = $types;
-          for ($i=0; $i<count($params); $i++) {
-              $bind_name = 'bind' . $i;
-              $$bind_name = $params[$i];
-              $bind_names[] = &$$bind_name;
-          }
-          call_user_func_array([$stmt, 'bind_param'], $bind_names);
-
-          $stmt->execute();
-          $result = $stmt->get_result();
-
-          $products = [];
-          while ($row = $result->fetch_assoc()) {
-              $products[] = $row;
-          }
-
-          foreach ($products as &$product) {
-              $slug = $product['slug'];
-              $stmtAttr = $mysql->prepare("SELECT attribute_main, value_main, attribute_secondary, value_secondary, attribute_tertiary, value_tertiary,  extraPrice, quantity FROM product_attributes WHERE slug = ?");
-              $stmtAttr->bind_param("s", $slug);
-              $stmtAttr->execute();
-              $resultAttr = $stmtAttr->get_result();
-
-              $attributes = [];
-              while ($attrRow = $resultAttr->fetch_assoc()) {
-                  $attributes[] = $attrRow;
-              }
-              $product['attributes'] = $attributes;
-              $stmtAttr->close();
-          }
-          unset($product);
-
-          header('Content-Type: application/json; charset=utf-8');
-          echo json_encode($products);
-          exit;
-      } elseif ($uri === rtrim($baseProductsPath, '/').'/popularProduct') {
+        } elseif ($uri === rtrim($baseProductsPath, '/').'/popularProduct') {
         $result = $mysql->query("SELECT * FROM `products` WHERE popularProduct = 1");
     
         $products = [];
@@ -268,9 +196,137 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
     
       
       break;
-      
 
       case 'POST':
+        if (
+            preg_match("#^" . preg_quote($baseProductsPath, '#') . "/category/([^/]+)$#", $uri, $matches)
+        ) {
+            $categoryName = urldecode($matches[1]);
+            file_put_contents('debug.log', "POST Body: " . file_get_contents("php://input") . "\n", FILE_APPEND);
+
+
+            $data = json_decode(file_get_contents("php://input"), true);
+            $filters = $data['filters'] ?? [];
+
+            $sql = "SELECT * FROM products WHERE category = ?";
+            $types = "s";
+            $params = [$categoryName];
+
+            $filterIndex = 0;
+            foreach ($filters as $attr => $values) {
+                if (!is_array($values) || count($values) === 0) continue;
+
+                $filterIndex++;
+
+                // Плейсхолдери
+                $placeholders = implode(',', array_fill(0, count($values), '?'));
+
+                // Додаємо OR-групу, де кожен рівень атрибута перевіряється окремо
+                $sql .= " AND (
+                    EXISTS (
+                        SELECT 1 FROM product_attributes pa
+                        WHERE pa.slug = products.slug
+                        AND pa.attribute_main = ?
+                        AND pa.value_main IN ($placeholders)
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM product_attributes pa
+                        WHERE pa.slug = products.slug
+                        AND pa.attribute_secondary = ?
+                        AND pa.value_secondary IN ($placeholders)
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM product_attributes pa
+                        WHERE pa.slug = products.slug
+                        AND pa.attribute_tertiary = ?
+                        AND pa.value_tertiary IN ($placeholders)
+                    )
+                )";
+
+                // Типи: три атрибути і три блоки значень
+                $types .= str_repeat("s", 3 + (count($values) * 3));
+
+                // Значення
+                $params[] = $attr;              // attribute_main
+                foreach ($values as $v) $params[] = $v;
+
+                $params[] = $attr;              // attribute_secondary
+                foreach ($values as $v) $params[] = $v;
+
+                $params[] = $attr;              // attribute_tertiary
+                foreach ($values as $v) $params[] = $v;
+            }
+
+
+            $stmt = $mysql->prepare($sql);
+            if (!$stmt) {
+            http_response_code(500);
+            echo json_encode(['error' => 'DB prepare failed', 'detail' => $mysql->error]);
+            exit;
+            }
+
+            $bind_names[] = $types;
+            foreach ($params as $i => $val) {
+            $bind_names[] = &$params[$i];
+            }
+
+            call_user_func_array([$stmt, 'bind_param'], $bind_names);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            $products = [];
+            while ($row = $result->fetch_assoc()) {
+            $products[] = $row;
+            }
+
+            foreach ($products as &$product) {
+            $slug = $product['slug'];
+            $stmtAttr = $mysql->prepare("SELECT attribute_main, value_main, attribute_secondary, value_secondary, attribute_tertiary, value_tertiary, extraPrice, quantity FROM product_attributes WHERE slug = ?");
+            $stmtAttr->bind_param("s", $slug);
+            $stmtAttr->execute();
+            $resultAttr = $stmtAttr->get_result();
+
+            $attributes = [];
+            while ($attrRow = $resultAttr->fetch_assoc()) {
+                $attributes[] = $attrRow;
+            }
+
+            $product['attributes'] = $attributes;
+            $stmtAttr->close();
+            }
+            unset($product);
+
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($products);
+            exit;
+        }
+         if (str_starts_with($uri, $baseUsersPath . '/login')) {
+            handleUserLogin($mysql);
+            return;
+        }
+        
+        if ($uri === $baseProductsPath) {
+          $action = $_POST['action'] ?? '';
+  
+          if ($action === 'uploadImage') {
+            handleImageUpload();
+            return;
+          }
+  
+          if ($action === 'createProduct') {
+            handleProductCreate($mysql);
+            return;
+          }
+  
+          http_response_code(400);
+          echo json_encode(["error" => "Unknown or missing action"]);
+          return;
+        }
+  break;
+
+      
+
+    //   case 'POST':
         if (str_starts_with($uri, $baseUsersPath . '/login')) {
             handleUserLogin($mysql);
             return;
@@ -293,7 +349,7 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
           echo json_encode(["error" => "Unknown or missing action"]);
           return;
         }
-        break;
+    //     break;
 
         case 'PATCH':
             if (preg_match("#^" . preg_quote($baseProductsPath, '#') . "/([^/]+)$#", $uri, $matches)) {
@@ -487,7 +543,7 @@ function handleProductCreate(mysqli $mysql): void {
         $qtyVal = $qty;
 
         $stmt->bind_param(
-            "ssssssdii",
+            "ssssssssi",
             $slug,
             $mainAttrVal,
             $valMainVal,
