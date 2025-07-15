@@ -198,9 +198,28 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
       break;
 
       case 'POST':
-        if (
-            preg_match("#^" . preg_quote($baseProductsPath, '#') . "/category/([^/]+)$#", $uri, $matches)
-        ) {
+                if ($uri === $baseProductsPath) {
+          $action = $_POST['action'] ?? '';
+  
+          if ($action === 'uploadImage') {
+            handleImageUpload();
+            return;
+          }
+  
+          if ($action === 'createProduct') {
+            handleProductCreate($mysql);
+            return;
+          }
+  
+          http_response_code(400);
+          echo json_encode(["error" => "Unknown or missing action"]);
+          return;
+        }
+
+            if (
+                 preg_match("#^" . preg_quote($baseProductsPath, '#') . "/category/([^/]+)$#", rtrim($uri, '/'), $matches)
+                )
+            {
             $categoryName = urldecode($matches[1]);
             file_put_contents('debug.log', "POST Body: " . file_get_contents("php://input") . "\n", FILE_APPEND);
 
@@ -300,56 +319,12 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
             echo json_encode($products);
             exit;
         }
-         if (str_starts_with($uri, $baseUsersPath . '/login')) {
-            handleUserLogin($mysql);
-            return;
-        }
         
-        if ($uri === $baseProductsPath) {
-          $action = $_POST['action'] ?? '';
-  
-          if ($action === 'uploadImage') {
-            handleImageUpload();
-            return;
-          }
-  
-          if ($action === 'createProduct') {
-            handleProductCreate($mysql);
-            return;
-          }
-  
-          http_response_code(400);
-          echo json_encode(["error" => "Unknown or missing action"]);
-          return;
-        }
-  break;
-
-      
-
-    //   case 'POST':
         if (str_starts_with($uri, $baseUsersPath . '/login')) {
             handleUserLogin($mysql);
             return;
         }
-        
-        if ($uri === $baseProductsPath) {
-          $action = $_POST['action'] ?? '';
-  
-          if ($action === 'uploadImage') {
-            handleImageUpload();
-            return;
-          }
-  
-          if ($action === 'createProduct') {
-            handleProductCreate($mysql);
-            return;
-          }
-  
-          http_response_code(400);
-          echo json_encode(["error" => "Unknown or missing action"]);
-          return;
-        }
-    //     break;
+        break;
 
         case 'PATCH':
             if (preg_match("#^" . preg_quote($baseProductsPath, '#') . "/([^/]+)$#", $uri, $matches)) {
@@ -528,32 +503,33 @@ function handleProductCreate(mysqli $mysql): void {
       $mainAttr = $attributeNames[0] ?? null;
       $secAttr = $attributeNames[1] ?? null;
       $thirdAttr = $attributeNames[2] ?? null;
-  
+        
       $valMain = $mainAttr ? ($combo[$mainAttr] ?? null) : null;
       $valSec = $secAttr ? ($combo[$secAttr] ?? null) : null;
       $valThird = $thirdAttr ? ($combo[$thirdAttr] ?? null) : null;
   
-       $mainAttrVal = $mainAttr ?? null;
-        $valMainVal = $valMain ?? null;
-        $secAttrVal = $secAttr ?? null;
-        $valSecVal = $valSec ?? null;
-        $thirdAttrVal = $thirdAttr ?? null;
-        $valThirdVal = $valThird ?? null;
-        $extraPriceVal = $extraPrice;
-        $qtyVal = $qty;
+$mainAttrVal = $mainAttr ?? '';
+$valMainVal = $valMain ?? '';
+$secAttrVal = $secAttr ?? '';
+$valSecVal = $valSec ?? '';
+$thirdAttrVal = $thirdAttr ?? '';
+$valThirdVal = $valThird ?? '';
+$extraPriceVal = $extraPrice;
+$qtyVal = $qty;
 
-        $stmt->bind_param(
-            "ssssssssi",
-            $slug,
-            $mainAttrVal,
-            $valMainVal,
-            $secAttrVal,
-            $valSecVal,
-            $thirdAttrVal,
-            $valThirdVal,
-            $extraPriceVal,
-            $qtyVal
-        );
+$stmt->bind_param(
+    "ssssssssi",
+    $slug,
+    $mainAttrVal,
+    $valMainVal,
+    $secAttrVal,
+    $valSecVal,
+    $thirdAttrVal,
+    $valThirdVal,
+    $extraPriceVal,
+    $qtyVal
+);
+
 
           $stmt->execute();
     }
@@ -609,7 +585,6 @@ function handleUserLogin(mysqli $mysql): void {
     $input = json_decode(file_get_contents('php://input'), true);
     $email = $input['email'] ?? '';
     $password = $input['password'] ?? '';
-    file_put_contents(__DIR__ . '/debug.log', "Отримані дані: email=$email, password=$password\n", FILE_APPEND);
 
 
     if (empty($email) || empty($password)) {
@@ -633,7 +608,6 @@ function handleUserLogin(mysqli $mysql): void {
     $stmt->bind_result($userId, $passwordHash);
     $stmt->fetch();
     $stmt->close();
-    file_put_contents(__DIR__ . '/debug.log', "Хеш пароля з бази: $passwordHash\n", FILE_APPEND);
 
 
 
