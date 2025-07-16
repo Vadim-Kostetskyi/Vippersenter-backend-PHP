@@ -221,8 +221,6 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
                 )
             {
             $categoryName = urldecode($matches[1]);
-            file_put_contents('debug.log', "POST Body: " . file_get_contents("php://input") . "\n", FILE_APPEND);
-
 
             $data = json_decode(file_get_contents("php://input"), true);
             $filters = $data['filters'] ?? [];
