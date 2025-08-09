@@ -134,34 +134,53 @@ function handleRequest(string $method, string $uri, mysqli $mysql): void {
   }
   
     elseif ($uri === rtrim($baseProductsPath, '/').'/randomProducts') {
-        $result = $mysql->query("SELECT * FROM `products` ORDER BY RAND() LIMIT 3");
-    
-        $products = [];
-        while ($row = $result->fetch_assoc()) {
-            $products[] = $row;
+        if (isset($_GET['slug']) && !empty($_GET['slug'])) {
+            $slug = $_GET['slug'];
+
+            // Вибираємо 5 випадкових продуктів, крім того, що має цей slug
+            $stmt = $mysql->prepare("SELECT * FROM `products` WHERE slug != ? ORDER BY RAND() LIMIT 5");
+            $stmt->bind_param("s", $slug);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            $products = [];
+            while ($row = $result->fetch_assoc()) {
+                $products[] = $row;
+            }
+            $stmt->close();
+        } else {
+            // Якщо slug не переданий, вибираємо просто 5 випадкових продуктів
+            $result = $mysql->query("SELECT * FROM `products` ORDER BY RAND() LIMIT 5");
+
+            $products = [];
+            while ($row = $result->fetch_assoc()) {
+                $products[] = $row;
+            }
         }
-    
+
+        // Отримуємо атрибути для кожного продукту
         foreach ($products as &$product) {
             $slug = $product['slug'];
             $stmtAttr = $mysql->prepare("SELECT attribute_main, value_main, attribute_secondary, value_secondary, attribute_tertiary, value_tertiary, extraPrice, quantity FROM product_attributes WHERE slug = ?");
             $stmtAttr->bind_param("s", $slug);
             $stmtAttr->execute();
             $resultAttr = $stmtAttr->get_result();
-    
+
             $attributes = [];
             while ($attrRow = $resultAttr->fetch_assoc()) {
                 $attributes[] = $attrRow;
             }
-    
+
             $product['attributes'] = $attributes;
             $stmtAttr->close();
         }
         unset($product);
-    
+
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(is_array($products) ? $products : []);
         exit;
     }
+
     
     elseif (str_starts_with($uri, $baseProductsPath . '/')) {
           $slug = ltrim(substr($uri, strlen($baseProductsPath)), '/');

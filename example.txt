@@ -1,0 +1,10 @@
+sdfdsdf/vise-data-base/api/v1/products/newProduct
+/vise-data-base/api/v1/products
+/vise-data-base/api/v1/products/newProduct
+/vise-data-base/api/v1/products
+/vise-data-base/api/v1/products/popularProduct
+/vise-data-base/api/v1/products
+/vise-data-base/api/v1/products/search=
+/vise-data-base/api/v1/products
+/vise-data-base/api/v1/products/BALANCE-Brunette
+/vise-data-base/api/v1/products
